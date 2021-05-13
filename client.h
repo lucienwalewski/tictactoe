@@ -3,3 +3,5 @@
  * 
  * Lucien Walewski and Alban Puech
  */
+
+struct 
