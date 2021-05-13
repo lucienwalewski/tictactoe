@@ -13,10 +13,14 @@ struct thread_arg {
 }; 
 
 struct clientinfos {
-    char client1[8]="00000000";
-    char client2[8]="00000000";
+    char client1[8];
+    char client2[8];
     
 };
+
+
+memset(&(clientinfos.client1),0,sizeof(clientinfos.client1));
+memset(&(clientinfos.client2),0,sizeof(clientinfos.client2));
 
 
 
