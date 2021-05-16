@@ -15,8 +15,6 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#include "server.h"
-
 #define NTHREADS 2
 #define MAX_LEN_MSG 2048
 
@@ -81,7 +79,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	long port = argv[0];
+	long port = argv[1];
 	int sockfd;
 	struct sockaddr_in sockaddr;
 
@@ -132,6 +130,10 @@ int main(int argc, char *argv[]) {
 			client_addresses->clientsock2 = (struct sockaddr *)&sockaddr;
 			client_addresses->addrlen2 = sizeof sockaddr;
 		}
+
+		char connection_msg[] = (connected == 0) ? "CON. Client 1 connected" : "CON. Client 2 connected";
+
+		connected++;
 
 	}
 
