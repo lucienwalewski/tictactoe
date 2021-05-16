@@ -15,12 +15,13 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#define NTHREADS 2
-#define MAX_LEN_MSG 2048
+#define NTHREADS 2				// Max number of threads
+#define MAX_LEN_MSG 2048		// Max message length -> should not be longer than this
+#define TIMEOUT 60				// Time after which player times out
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_t tid[NTHREADS];
-int thread_id;
+pthread_t tid[NTHREADS]; 		// List of threads
+int thread_id;					// Current thread id
 
 struct thread_arg {
 	char buffer[MAX_LEN_MSG];
@@ -29,6 +30,9 @@ struct thread_arg {
 
 /*
  * Stores the socket information of the two clients
+ * For each client:
+ * 	- struct sockaddr
+ * 	- socklen_t
  */
 struct clientinfos {
 	struct sockaddr *clientsock1;
@@ -38,8 +42,19 @@ struct clientinfos {
 };
 
 // Game state
-int grid[9];
-int turn = 0;
+int grid[3][3];							// Hold the board state
+int turn = 0;							// Initially player 1s turn
+
+int connected = 0;						// Number of connected clients
+struct clientinfos *client_addresses;	// Holds client information
+int sockfd;								// Socket file descriptor
+
+/* Function descriptors */
+void *play_game(void);
+void *connect_players(void);
+int *check_valid(int move[2]);
+void *update_game(int move[2]);
+void *construct_FYI(char *msg);
 
 // void *recsend(void *argu) {
 // 	struct thread_arg *args = (struct thread_arg *)argu;
@@ -80,7 +95,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	long port = argv[1];
-	int sockfd;
 	struct sockaddr_in sockaddr;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -105,15 +119,13 @@ int main(int argc, char *argv[]) {
 
 	// Wait for two clients to connect
 	
-	int connected = 0;
-	struct clientinfos *client_addresses;
 
 	while (connected < 2) {
 		char msg[MAX_LEN_MSG];
 		int bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, (struct  sockaddr *)&sockaddr, sizeof sockaddr);
 
 		if (bytes_received == -1) {
-			fprintf(stderr, "Error while receivintg message: %s\n", strerror(errno));
+			fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 			return 1;
 		}
 		if (strncpy(msg, "CON", 3 * sizeof(char)) != 0) {
@@ -134,6 +146,10 @@ int main(int argc, char *argv[]) {
 		char connection_msg[] = (connected == 0) ? "CON. Client 1 connected" : "CON. Client 2 connected";
 
 		// send connection_msg to client
+		int bytes_sent = sendto(sockfd, (char *)connection_msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr, sizeof sockaddr);
+		if (bytes_sent == -1) {
+			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+		}
 
 		connected++;
 
@@ -141,8 +157,16 @@ int main(int argc, char *argv[]) {
 
 	// After this point both clients are connected and ready to play the game
 
-	int not_terminated = 1;
+	play_game();
 
+
+
+}
+
+/* Plays the game until it terminates */
+void *play_game(void) {
+
+	int not_terminated = 1;
 
 	while (not_terminated) {
 
@@ -152,7 +176,17 @@ int main(int argc, char *argv[]) {
 		curr_play_sockaddr = (!turn) ? (struct sockaddr *)client_addresses->clientsock1 : (struct sockaddr *)client_addresses->clientsock2;
 		curr_play_addrlen = (!turn) ? client_addresses->arrdlen1 : client_addresses->addrlen2;
 
-		char msg[] = "MYM";
+		char* msg = NULL;
+		construct_FYI(msg);
+
+		int bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
+		if (bytes_sent == -1) {
+			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+		}
+
+		memset(msg, 0, sizeof msg);
+		strncpy(msg, "MYM", 3);
+
 		int bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
@@ -168,7 +202,58 @@ int main(int argc, char *argv[]) {
 
 
 	}
+}
 
+/* Returns 1 if the move is valid otherwise 0 */
+int *check_valid(int move[2]) {
+	int x, y;
+	x = move[0];
+	y = move[1];
+	if (grid[x][y] != 0) {
+		return 0;
+	}
+	return 1;
+
+}
+
+/* Updates the game board assuming the move was valid */
+void *update_game(int move[2]) {
+	int x, y;
+	x = move[0];
+	y = move[1];
+	grid[x][y] = (!turn) ? 1 : 2;
+}
+
+void *construct_FYI(char *msg) {
+	int n; // Number of filled positions
+	int i, j;
+	for (i = 0; i < 3; i++) {
+		for (j = 0; j < 3; j++) {
+			if (grid[i][j] != 0) {
+				n++;
+			}
+		}
+	}
+	msg = (char*) malloc((4 + 3 * n) * sizeof(char));
+	memset(msg, 0, sizeof msg);
+	strncpy(msg, "FYI", 3);
+	strncpy(msg + 3, n, 1);
+
+	int k;
+	char *temp = msg + 4;
+	for (i = 0; i < 3; i++) {
+		for (j = 0; j < 3; j++) {
+			if (grid[i][j] != 0) {
+				char positions[3];
+				itoa(grid[i][j], positions[0], 10);
+				itoa(i, positions[1], 10);
+				itoa(j, positions[2], 10);
+				strncp(msg + (3 * k), positions, 3);	
+			}
+		}
+	}
+	
+	return NULL;
 }
 
 

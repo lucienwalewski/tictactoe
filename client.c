@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Error while connecting (receiving message): %s\n", strerror(errno));
 	}
 
-	if (strncpy(msg, "CON", 3 * sizeof(char)) != 0) {
+	if (strncmp(msg, "CON", 3 * sizeof(char)) != 0) {
 		printf("Connection failed.\n");
 		return 1;
 	}
