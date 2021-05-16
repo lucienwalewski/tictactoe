@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
 			break;
 		}
 
-		printf("Client %d connected\n", connected);
+		printf("Client %d connected\n", connected + 1);
 
 		if (connected == 0) {
 			client_addresses->clientsock1 = (struct sockaddr *)&sockaddr;
@@ -132,6 +132,8 @@ int main(int argc, char *argv[]) {
 		}
 
 		char connection_msg[] = (connected == 0) ? "CON. Client 1 connected" : "CON. Client 2 connected";
+
+		// send connection_msg to client
 
 		connected++;
 
