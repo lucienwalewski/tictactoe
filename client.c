@@ -1,3 +1,4 @@
+
 /* 
  * Tictactoe client.h
  * 
@@ -25,7 +26,7 @@ int allow_write = 0;
 int main (int argc, char *argv []) {
   
 
-  int mysocket;
+  int sockfd;
   struct sockaddr_in dest;
   int port;
 
@@ -40,8 +41,8 @@ int main (int argc, char *argv []) {
   if (port==0)fprintf(stderr,"incorrect port\n"); 
 
 
-  mysocket = socket(AF_INET, SOCK_DGRAM, 0);
-  if (mysocket==-1){
+  sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+  if (sockfd==-1){
     fprintf(stderr,"Could not create socket\n");
   }
 
@@ -53,25 +54,25 @@ int main (int argc, char *argv []) {
 
   // Connect to server
 
-  char msg[] = "CON";
+  char msg_co[] = "CON";
 
-  int bytes_sent = sendto(sockfd, &msg, 3, 0, &sockaddr, sizeof sockaddr);
+  int bytes_sent = sendto(sockfd, &msg_co, 3, 0, &dest, sizeof(dest));
   if (bytes_sent == -1) {
     fprintf(stderr, "Error while connecting (sending first message): %s\n", strerror(errno));
   }
 
-  char msg[MAX_LEN_MSG];
-  int bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, &sockaddr, sizeof sockaddr);
+  char msg_back[MAX_LEN_MSG];
+  int bytes_received = recvfrom(sockfd, (char *)msg_back, MAX_LEN_MSG, 0, &dest, sizeof dest);
   if (bytes_received == -1) {
     fprintf(stderr, "Error while connecting (receiving message): %s\n", strerror(errno));
   }
 
-  if (strncmp(msg, "CON", 3 * sizeof(char)) != 0) {
+  if (strncmp(msg_back, "CON", 3 * sizeof(char)) != 0) {
     printf("Connection failed.\n");
     return 1;
   }
 
-  printf("%s\n", *msg + 3);
+  printf("%s\n", *msg_back + 3);
 
   // We are connected
 
@@ -85,31 +86,31 @@ int main (int argc, char *argv []) {
     if (!allow_write){
       // if (getline(&line, &len, stdin)>0){printf("not your turn !/n");}
       
-      char msg[MAX_LEN_MSG];
+      char msg_rec[MAX_LEN_MSG];
       int bytes_received = 0;
 
-      bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, &sockaddr, sizeof(sockaddr));
+      bytes_received = recvfrom(sockfd, (char *)msg_rec, MAX_LEN_MSG, 0, &dest, sizeof(dest));
       if (bytes_received == -1) {
 	fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
       }
 
-      if strncmp(msg,"FYI",3){
-	  printf(decrypt_fyi(msg));
+      if (strncmp(msg_rec,"FYI",3)){
+	  printf(decrypt_fyi(msg_rec));
 	}
-      if strncmp(msg,"TXT",3){
-	  printf(msg+4);
+      if (strncmp(msg_rec,"TXT",3)){
+	  printf(msg_rec+4);
         }
-      if strncmp(msg,"MYM",3){
+      if (strncmp(msg_rec,"MYM",3)){
 	  printf("it is your turn ! \n");
 	  allow_write = 1;
         }
-      if strncmp(msg,"END",3){
-	  int winner = atol(msg+3);
+      if (strncmp(msg_rec,"END",3)){
+	  int winner = atol(msg_rec+3);
 	  if (!winner){
-	    printf("it is a draw ! \n");
+	    printf("it is a draw ! \n",winner);
 	  }
 	  else{
-	    printf("player %d won ! \n");
+	    printf("player %d won ! \n",winner);
 	  }
 	  return 0;
         }
@@ -120,7 +121,7 @@ int main (int argc, char *argv []) {
       fprintf(stderr,"error reading the command /n");
     }
 
-    if (  (strlen(line)<7)       ||    (strcmp(line, "MOV",3)!=0)   ||    (strcmp(line+3, " ",1)!=0)    ||    (strcmp(line+5, ",",1)!=0)    ||    (strcmp(line+7, "\0",1)!=0)   ){
+    if (  (strlen(line)<7)       ||    (strncmp(line, "MOV",3)!=0)   ||    (strncmp(line+3, " ",1)!=0)    ||    (strncmp(line+5, ",",1)!=0)    ||    (strncmp(line+7, "\0",1)!=0)   ){
       fprintf(stderr,"incorrect command /n");
     }
 
@@ -128,18 +129,21 @@ int main (int argc, char *argv []) {
     char col = line[6];
    
 
-    if  (atol(&raw)<1 || atol(&col)<1  || atol(&raw)>3     ||      atol(&col)>3  {
+    if  (   (atol(&raw)<1) || (atol(&col)<1)  || (atol(&raw)>3)     ||      (atol(&col)>3)  )  {
     fprintf(stderr,"incorrect row or column /n");
   }
   
 
-    sendto(mysocket, line, len, 0,(struct sockaddr*) &dest, sizeof(dest)); 
+    sendto(sockfd, line, len, 0,(struct dest*) &dest, sizeof(dest)); 
 
   }
 
   return 0;
 
 }
+
+
+
 
 
 
