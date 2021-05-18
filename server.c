@@ -173,33 +173,56 @@ void *play_game(void) {
 		struct sockaddr *curr_play_sockaddr;
 		socklen_t curr_play_addrlen;
 
+		// Get current player's information
 		curr_play_sockaddr = (!turn) ? (struct sockaddr *)client_addresses->clientsock1 : (struct sockaddr *)client_addresses->clientsock2;
 		curr_play_addrlen = (!turn) ? client_addresses->arrdlen1 : client_addresses->addrlen2;
 
+		// Prepare FYI message
 		char* msg = NULL;
 		construct_FYI(msg);
 
+		// Send FYI message
 		int bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
 
+		// Prepare MYM message
 		memset(msg, 0, sizeof msg);
 		strncpy(msg, "MYM", 3);
 
+		// Send MYM message
 		int bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
 
+		// Get response
 		char response[MAX_LEN_MSG];
-		int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, curr_play_addrlen);
-		if (bytes_received == -1) {
-			fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+		int received = 1; // While waiting for reception
+
+		while (received) {
+			int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, curr_play_addrlen);
+			if (bytes_received == -1) {
+				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+			}
+
+
+			
+			if (strncmp(&response, "MOV", 3) != 0) {
+				// Send another request
+			}
 		}
+		
 
 		// Parse response etc.
+		if (strncmp(&response, "MOV", 3) != 0) {
 
+		}
+
+
+
+		turn = !turn;
 
 	}
 }
@@ -248,7 +271,7 @@ void *construct_FYI(char *msg) {
 				itoa(grid[i][j], positions[0], 10);
 				itoa(i, positions[1], 10);
 				itoa(j, positions[2], 10);
-				strncp(msg + (3 * k), positions, 3);	
+				strncpy(msg + (3 * k), positions, 3);	
 			}
 		}
 	}

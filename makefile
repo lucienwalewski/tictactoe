@@ -1,10 +1,10 @@
-all: server fancyclient
+all: server client
 
 server: server.c
 	gcc -Wall server.c -o server
 
-fancyclient: fancyclient.c
-	gcc -Wall fancyclient.c -o fancyclient
+client: client.c
+	gcc -Wall client.c -o client
 
 clean:
-	rm server fancyclient
+	rm server client
