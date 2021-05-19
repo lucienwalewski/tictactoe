@@ -18,6 +18,8 @@
 #define NTHREADS 2				// Max number of threads
 #define MAX_LEN_MSG 2048		// Max message length -> should not be longer than this
 #define TIMEOUT 60				// Time after which player times out
+#define GRID_SIZE 3
+#define MOVE_COUNT 0			// Count the number of moves made to determine when the game is over
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_t tid[NTHREADS]; 		// List of threads
@@ -42,6 +44,7 @@ struct clientinfos {
 };
 
 // Game state
+// Cells in grid contain a 0 if empty, 1 if occupied by player 1 and a 2 otherwise
 int grid[3][3];							// Hold the board state
 int turn = 0;							// Initially player 1s turn
 
@@ -52,35 +55,10 @@ int sockfd;								// Socket file descriptor
 /* Function descriptors */
 void *play_game(void);
 void *connect_players(void);
-int *check_valid(int move[2]);
+int check_valid(int move[2]);
 void *update_game(int move[2]);
 void *construct_FYI(char *msg);
-
-// void *recsend(void *argu) {
-// 	struct thread_arg *args = (struct thread_arg *)argu;
-
-// 	// Third client attempts to connect
-// 	if (args->from != clientinfo.client1 && args->from != clientinfo.client2) {
-// 		char msg[] = "END 255";
-// 		int bytes_sent = sendto(sockfd, msg, sizeof msg, 0, &(args->from), sizeof args->from);
-// 		if (bytes_sent == -1) {
-// 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
-// 			return NULL;
-// 		}
-// 	}
-
-// 	// Not client's turn
-// 	if ((args->from == info.client1 && !info.turn) || (args->from == info.client2 && info.turn)) {
-// 		char msg[] = "Not your turn";
-// 		int bytes_sent = sendto(sockfd, msg, sizeof msg, 0, &(args->from), sizeof args->from);
-// 		if (bytes_sent == -1) {
-// 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
-// 			return NULL;
-// 		}
-// 	}
-// 	char msg[3];
-// 	strncpy(msg, args->buffer, 3);
-// }
+int check_status(void);
 
 int main(int argc, char *argv[]) {
 
@@ -94,8 +72,9 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	long port = argv[1];
+	long port = atol(argv[1]);
 	struct sockaddr_in sockaddr;
+	// socklen_t addrlen;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1) {
@@ -121,8 +100,11 @@ int main(int argc, char *argv[]) {
 	
 
 	while (connected < 2) {
+		struct sockaddr_in sockaddr_client;
+		socklen_t addrlen_client = sizeof sockaddr_client;
+
 		char msg[MAX_LEN_MSG];
-		int bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, (struct  sockaddr *)&sockaddr, sizeof sockaddr);
+		int bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr_client, &addrlen_client);
 
 		if (bytes_received == -1) {
 			fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
@@ -135,18 +117,18 @@ int main(int argc, char *argv[]) {
 		printf("Client %d connected\n", connected + 1);
 
 		if (connected == 0) {
-			client_addresses->clientsock1 = (struct sockaddr *)&sockaddr;
-			client_addresses->arrdlen1 = sizeof sockaddr;
+			client_addresses->clientsock1 = (struct sockaddr *)&sockaddr_client;
+			client_addresses->arrdlen1 = sizeof addrlen_client;
 		}
 		else if (connected == 1) {
-			client_addresses->clientsock2 = (struct sockaddr *)&sockaddr;
-			client_addresses->addrlen2 = sizeof sockaddr;
+			client_addresses->clientsock2 = (struct sockaddr *)&sockaddr_client;
+			client_addresses->addrlen2 = sizeof addrlen_client;
 		}
 
-		char connection_msg[] = (connected == 0) ? "CON. Client 1 connected" : "CON. Client 2 connected";
+		char *connection_msg = (connected == 0) ? "CON. Client 1 connected" : "CON. Client 2 connected";
 
 		// send connection_msg to client
-		int bytes_sent = sendto(sockfd, (char *)connection_msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr, sizeof sockaddr);
+		int bytes_sent = sendto(sockfd, (char *)connection_msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr_client, addrlen_client);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
@@ -192,43 +174,38 @@ void *play_game(void) {
 		strncpy(msg, "MYM", 3);
 
 		// Send MYM message
-		int bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
+		bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
 
 		// Get response
-		char response[MAX_LEN_MSG];
+		char *response = malloc(MAX_LEN_MSG * sizeof(char));
 		int received = 1; // While waiting for reception
 
 		while (received) {
-			int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, curr_play_addrlen);
+			int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, &curr_play_addrlen);
 			if (bytes_received == -1) {
 				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 			}
-
-
 			
-			if (strncmp(&response, "MOV", 3) != 0) {
+			if (strncmp(response, "MOV", 3) != 0) {
 				// Send another request
 			}
 		}
 		
 
 		// Parse response etc.
-		if (strncmp(&response, "MOV", 3) != 0) {
+		if (strncmp(response, "MOV", 3) != 0) {
 
 		}
-
-
-
 		turn = !turn;
 
 	}
 }
 
 /* Returns 1 if the move is valid otherwise 0 */
-int *check_valid(int move[2]) {
+int check_valid(int move[2]) {
 	int x, y;
 	x = move[0];
 	y = move[1];
@@ -236,7 +213,6 @@ int *check_valid(int move[2]) {
 		return 0;
 	}
 	return 1;
-
 }
 
 /* Updates the game board assuming the move was valid */
@@ -247,6 +223,9 @@ void *update_game(int move[2]) {
 	grid[x][y] = (!turn) ? 1 : 2;
 }
 
+/* 
+ * Construct FYI message to send
+ */
 void *construct_FYI(char *msg) {
 	int n; // Number of filled positions
 	int i, j;
@@ -260,9 +239,9 @@ void *construct_FYI(char *msg) {
 	msg = (char*) malloc((4 + 3 * n) * sizeof(char));
 	memset(msg, 0, sizeof msg);
 	strncpy(msg, "FYI", 3);
-	strncpy(msg + 3, n, 1);
+	memset(msg + 3, n, 1);
 
-	int k;
+	int k = 1;
 	char *temp = msg + 4;
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 3; j++) {
@@ -272,11 +251,65 @@ void *construct_FYI(char *msg) {
 				itoa(i, positions[1], 10);
 				itoa(j, positions[2], 10);
 				strncpy(msg + (3 * k), positions, 3);	
+				k++;
 			}
 		}
 	}
 	
 	return NULL;
+}
+
+
+/*
+ * Checks the status of the game. Return 0 if the game is unfinished, 
+ * 1 if the first player won, 2 if the second player won and 3 if the game
+ * ended in a draw. 
+ */
+int check_status(void) {
+	int i, j;
+	// Check rows and columns
+	for (i = 0; i < GRID_SIZE; i++) {
+		for (j = 1; j < GRID_SIZE; j++) { // Check if all the elements in the row belong to this player
+			if (grid[i][j] != grid[i][0]) {
+				break;
+			}
+		}
+		if (j == GRID_SIZE) {
+			return grid[i][0];
+		}
+
+		for (j = 1; j < GRID_SIZE; j++) { // Check if all the elements in the column belong to this player
+			if (grid[j][i] != grid[0][i]) {
+				break;
+			}
+		}
+		if (j == GRID_SIZE) {
+			return grid[0][i];
+		}
+	}
+
+	// Check first diagonal
+	for (i = 0; i < GRID_SIZE; i++) {
+		if (grid[i][i] != grid[0][0]) {
+			break;
+		}
+	}
+	if (i == GRID_SIZE) {
+		return grid[0][0];
+	}
+
+	// Check second diagonal
+	for (i = 0; i < GRID_SIZE; i++) {
+		if (grid[i][GRID_SIZE - i - 1] != grid[0][GRID_SIZE - 1]) {
+			break;
+		}
+	}
+	if (i == GRID_SIZE) {
+		return grid[0][GRID_SIZE - 1];
+	}
+
+	// Draw 
+	return 3;
 }
 
 
@@ -319,115 +352,3 @@ void *construct_FYI(char *msg) {
  
   
   
-//  pthread_mutex_lock(&lock);      // START critical region
-//  if( sendto(mysocket, args->buffer, sizeof(args->buffer), 0,&(args->from), sizeof(args->from))==-1){
-//      fprintf(stderr,"error while sending\n");
-//  exit(EXIT_FAILURE);   
-//  }
-//  pthread_mutex_unlock(&lock);     // END critical region
-//  return NULL;
-
-// }
-
-
-
-
-// int main (int argc, char *argv []) {
-  
-// struct sockaddr_in addr;
-// int port;
-// mysocket = socket(AF_INET, SOCK_DGRAM, 0);
-
-//  if (argc<2){
-//    fprintf(stderr,"missing arguments\n");
-//    return 1 ;
-//  }
-
-//  if (argc>2){
-//    fprintf(stderr,"too many arguments\n");
-//    return 1 ;
-//  }
-
-
-
-// port = atol(argv[1]);
-//  if (port==0){
-//  fprintf(stderr,"incorrect port\n");
-//  return 1; 
-//  }
-
-// if (mysocket==-1){
-//   fprintf(stderr,"Could not create socket\n");
-//   return 1; 
-// }
-
-// memset(&addr, 0, sizeof(addr));
-// addr.sin_family = AF_INET;
-// inet_pton(AF_INET,"127.0.0.1",&(addr.sin_addr));
-// addr.sin_port = htons(port);
-
-//  if (bind(mysocket, (const struct sockaddr*) &addr, sizeof(addr))==-1){
-//    fprintf(stderr,"impossible to bind\n");
-//    return 1;
-//  }
-
-// // initialize the mutex
-//  if (pthread_mutex_init(&lock, NULL) != 0){
-//    printf("\n mutex init failed\n");
-//    return 1;
-//  }
-
-//  // store the threads 
-//  pthread_t thread[NTHREADS];
-//  // counter for the number of threads  
-//  int count = 0;
- 
-
-//  while(1){
-   
-//    // allocate space for struct of arguments to give to the function 
-//    struct thread_arg *args = malloc(sizeof(struct thread_arg));
-//    socklen_t  fromlen = (socklen_t)  sizeof(struct sockaddr);
-
-//    // receive the message and store the address of the sender
-//    int bytes_received =  recvfrom(mysocket, args->buffer, MAX_LEN_MSG, 0,&(args->from), &fromlen);
-   
-
-   
- 
-//    if  (bytes_received == -1){
-//      printf("error while receiving the message from the client\n");
-//      return 1;}
-
-//    // if less than N threads, create a new thread to handle the communication with the client 
-//      if (count < NTHREADS){
-//      if(pthread_create(&thread[count-1], NULL, recsend, args)) {
-//        fprintf(stderr, "Error creating thread\n");
-//        return 1;
-//      }}
-
-//      // otherwise, wait for all the threads to terminate and create a new thread after that 
-//      else{
-//        int j;
-//        for (j=1; j<NTHREADS; j++)
-// 	 {
-// 	   if(pthread_join(thread[j-1],NULL )) {
-// 	     fprintf(stderr, "Error waiting for thread\n");
-// 	     return 1;
-// 	   }
-// 	 }     
-      
-//        count = 0;
-//        if(pthread_create(&thread[count-1], NULL, recsend, args)) {
-// 	 fprintf(stderr, "Error creating thread\n");
-// 	 return 1;
-//        }
-//      }
-//      count+=1; // increment the counter of threads
-//    }
- 
-//  return 0;
-// }
-
-
-

@@ -22,6 +22,16 @@
 
 #define MAX_LEN_MSG 2048
 
+/*
+ * Message macros
+ */
+#define FYI 0x01
+#define MYM 0x02
+#define END 0x03
+#define TXT 0x04
+#define MOV 0x05
+#define LFT 0x06
+
 int allow_write = 0;
 
 void *decrypt_fyi(void * msg);
