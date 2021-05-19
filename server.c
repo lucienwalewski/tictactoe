@@ -63,10 +63,10 @@ struct clientinfos *client_addresses;	// Holds client information
 int sockfd;								// Socket file descriptor
 
 /* Function descriptors */
-void *play_game(void);
+void play_game(void);
 void *connect_players(void);
 int check_valid(int move[2]);
-void *update_game(int move[2]);
+void update_game(int move[2]);
 void *construct_FYI(char *msg);
 int check_status(void);
 
@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	puts("Socket created\n");
+	puts("Socket created");
 
 	memset(&sockaddr, 0, sizeof sockaddr);
 	sockaddr.sin_family = AF_INET;
@@ -104,7 +104,7 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	puts("Binded to socket\n");
+	puts("Binded to socket");
 
 	// Wait for two clients to connect
 	
@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
 }
 
 /* Plays the game until it terminates */
-void *play_game(void) {
+void play_game(void) {
 
 	int not_terminated = 1;
 
@@ -246,7 +246,7 @@ int check_valid(int move[2]) {
 }
 
 /* Updates the game board assuming the move was valid */
-void *update_game(int move[2]) {
+void update_game(int move[2]) {
 	int x, y;
 	x = move[0];
 	y = move[1];
@@ -268,7 +268,7 @@ void *construct_FYI(char *msg) {
 	}
 
 	msg = (char*) malloc((2 + 3 * n) * sizeof(char)); // Allocate memory for message
-	memset(msg, 0, sizeof msg);
+	memset(msg, 0, sizeof(char) * (2 + (3 * n)));
 	memset(msg, FYI, 1); // Set FYI char
 	memset(msg + 1, n, 1); // Set number of blocks filled
 
