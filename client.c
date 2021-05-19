@@ -30,7 +30,7 @@
 #define END 0x03
 #define TXT 0x04
 #define MOV 0x05
-#define LFT 0x06
+#define CON 0x06
 
 int allow_write = 0;
 

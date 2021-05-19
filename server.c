@@ -21,6 +21,16 @@
 #define GRID_SIZE 3
 #define MOVE_COUNT 0			// Count the number of moves made to determine when the game is over
 
+/*
+ * Message macros
+ */
+#define FYI 0x01
+#define MYM 0x02
+#define END 0x03
+#define TXT 0x04
+#define MOV 0x05
+#define CON 0x06
+
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_t tid[NTHREADS]; 		// List of threads
 int thread_id;					// Current thread id
@@ -103,18 +113,20 @@ int main(int argc, char *argv[]) {
 		struct sockaddr_in sockaddr_client;
 		socklen_t addrlen_client = sizeof sockaddr_client;
 
-		char msg[MAX_LEN_MSG];
+		char *msg = malloc(MAX_LEN_MSG * sizeof(char));
 		int bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr_client, &addrlen_client);
 
 		if (bytes_received == -1) {
 			fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 			return 1;
 		}
-		if (strncpy(msg, "CON", 3 * sizeof(char)) != 0) {
+		
+		if (msg[0] == CON) {
+			printf("Client %d connected\n", connected + 1);
+		}
+		else {
 			break;
 		}
-
-		printf("Client %d connected\n", connected + 1);
 
 		if (connected == 0) {
 			client_addresses->clientsock1 = (struct sockaddr *)&sockaddr_client;
@@ -125,7 +137,18 @@ int main(int argc, char *argv[]) {
 			client_addresses->addrlen2 = sizeof addrlen_client;
 		}
 
-		char *connection_msg = (connected == 0) ? "CON. Client 1 connected" : "CON. Client 2 connected";
+		char *connection_msg = malloc(MAX_LEN_MSG * sizeof(char));
+		memset(connection_msg, 0, MAX_LEN_MSG * sizeof(char));
+		memset(msg, CON, sizeof(char));
+
+		if (connected == 0) {
+			strcpy(connection_msg + 1, "Client 1 connected");
+		}
+		else {
+			strcpy(connection_msg + 1, "Client 2 connected");
+		}
+
+		// connection_msg[1] = (connected == 0) ? "Client 1 connected" : "Client 2 connected";
 
 		// send connection_msg to client
 		int bytes_sent = sendto(sockfd, (char *)connection_msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr_client, addrlen_client);
@@ -169,12 +192,14 @@ void *play_game(void) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
 
+		free(msg);
+
 		// Prepare MYM message
-		memset(msg, 0, sizeof msg);
-		strncpy(msg, "MYM", 3);
+		char *mym_msg = malloc(sizeof(char));
+		memset(mym_msg, MYM, sizeof(char));
 
 		// Send MYM message
-		bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
+		bytes_sent = sendto(sockfd, &mym_msg, 1, 0, curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
@@ -189,16 +214,21 @@ void *play_game(void) {
 				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 			}
 			
-			if (strncmp(response, "MOV", 3) != 0) {
-				// Send another request
+			if (response[0] != MOV) { // Send another request
+				bytes_sent = sendto(sockfd, &mym_msg, 1, 0, curr_play_sockaddr, curr_play_addrlen);
+				if (bytes_sent == -1) {
+					fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+				}
+			}
+			else {
+				received = 0;
 			}
 		}
 		
+		free(mym_msg);
 
 		// Parse response etc.
-		if (strncmp(response, "MOV", 3) != 0) {
 
-		}
 		turn = !turn;
 
 	}
@@ -229,28 +259,28 @@ void *update_game(int move[2]) {
 void *construct_FYI(char *msg) {
 	int n; // Number of filled positions
 	int i, j;
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < 3; i++) { // Compute n
 		for (j = 0; j < 3; j++) {
 			if (grid[i][j] != 0) {
 				n++;
 			}
 		}
 	}
-	msg = (char*) malloc((4 + 3 * n) * sizeof(char));
+
+	msg = (char*) malloc((2 + 3 * n) * sizeof(char)); // Allocate memory for message
 	memset(msg, 0, sizeof msg);
-	strncpy(msg, "FYI", 3);
-	memset(msg + 3, n, 1);
+	memset(msg, FYI, 1); // Set FYI char
+	memset(msg + 1, n, 1); // Set number of blocks filled
 
 	int k = 1;
-	char *temp = msg + 4;
+	char *temp = msg + 2;
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 3; j++) {
 			if (grid[i][j] != 0) {
-				char positions[3];
-				itoa(grid[i][j], positions[0], 10);
-				itoa(i, positions[1], 10);
-				itoa(j, positions[2], 10);
-				strncpy(msg + (3 * k), positions, 3);	
+				memset(temp + (3 * k), grid[i][j], 1);
+				memset(temp + (3 * k) + 1, i, 1);
+				memset(temp + (3 * k) + 2, j, 1);
+
 				k++;
 			}
 		}
