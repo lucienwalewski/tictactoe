@@ -19,7 +19,6 @@
 #define MAX_LEN_MSG 2048		// Max message length -> should not be longer than this
 #define TIMEOUT 60				// Time after which player times out
 #define GRID_SIZE 3
-#define MOVE_COUNT 0			// Count the number of moves made to determine when the game is over
 
 /*
  * Message macros
@@ -55,19 +54,21 @@ struct clientinfos {
 
 // Game state
 // Cells in grid contain a 0 if empty, 1 if occupied by player 1 and a 2 otherwise
+
 int grid[3][3];							// Hold the board state
 int turn = 0;							// Initially player 1s turn
+int move_count = 0;						// Count the number of moves made to determine when the game is over
 
-int connected = 0;						// Number of connected clients
+// int connected = 0;						// Number of connected clients
 struct clientinfos *client_addresses;	// Holds client information
 int sockfd;								// Socket file descriptor
 
 /* Function descriptors */
 void play_game(void);
-void *connect_players(void);
+int connect_players(int sockfd, struct sockaddr_in dest_addr, long port);
 int check_valid(int move[2]);
 void update_game(int move[2]);
-void *construct_FYI(char *msg);
+int construct_FYI(char *msg);
 int check_status(void);
 
 int main(int argc, char *argv[]) {
@@ -108,9 +109,24 @@ int main(int argc, char *argv[]) {
 
 	// Wait for two clients to connect
 	
+	int connection = connect_players(sockfd, sockaddr, port);
+	if (connection) {
+		return 1;
+	}
+
+	// After this point both clients are connected and ready to play the game
+
+	play_game();
+}
+
+
+int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
+
+	int connected = 0;
 
 	while (connected < 2) {
-		struct sockaddr_in sockaddr_client;
+
+		struct sockaddr_in sockaddr_client = dest_addr;
 		socklen_t addrlen_client = sizeof sockaddr_client;
 
 		char *msg = malloc(MAX_LEN_MSG * sizeof(char));
@@ -137,34 +153,21 @@ int main(int argc, char *argv[]) {
 			client_addresses->addrlen2 = sizeof addrlen_client;
 		}
 
-		char *connection_msg = malloc(MAX_LEN_MSG * sizeof(char));
-		memset(connection_msg, 0, MAX_LEN_MSG * sizeof(char));
+		char *connection_msg = malloc(sizeof(char));
 		memset(msg, CON, sizeof(char));
 
-		if (connected == 0) {
-			strcpy(connection_msg + 1, "Client 1 connected");
-		}
-		else {
-			strcpy(connection_msg + 1, "Client 2 connected");
-		}
-
-		// connection_msg[1] = (connected == 0) ? "Client 1 connected" : "Client 2 connected";
-
-		// send connection_msg to client
-		int bytes_sent = sendto(sockfd, (char *)connection_msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr_client, addrlen_client);
+		// Send connection_msg to client
+		int bytes_sent = sendto(sockfd, (char *)connection_msg, sizeof(char), 0, (struct sockaddr *)&sockaddr_client, addrlen_client);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+			return 1;
 		}
 
 		connected++;
 
 	}
 
-	// After this point both clients are connected and ready to play the game
-
-	play_game();
-
-
+	return 0;
 
 }
 
@@ -183,16 +186,16 @@ void play_game(void) {
 		curr_play_addrlen = (!turn) ? client_addresses->arrdlen1 : client_addresses->addrlen2;
 
 		// Prepare FYI message
-		char* msg = NULL;
-		construct_FYI(msg);
+		char* fyi_msg = NULL;
+		int fyi_msg_len = construct_FYI(fyi_msg);
 
 		// Send FYI message
-		int bytes_sent = sendto(sockfd, &msg, 3, 0, curr_play_sockaddr, curr_play_addrlen);
+		int bytes_sent = sendto(sockfd, &fyi_msg, fyi_msg_len, 0, curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 		}
 
-		free(msg);
+		free(fyi_msg);
 
 		// Prepare MYM message
 		char *mym_msg = malloc(sizeof(char));
@@ -207,30 +210,63 @@ void play_game(void) {
 		// Get response
 		char *response = malloc(MAX_LEN_MSG * sizeof(char));
 		int received = 1; // While waiting for reception
+		int valid = 1; // While waiting for a valid move
+		int move[2];
 
-		while (received) {
-			int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, &curr_play_addrlen);
-			if (bytes_received == -1) {
-				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
-			}
-			
-			if (response[0] != MOV) { // Send another request
-				bytes_sent = sendto(sockfd, &mym_msg, 1, 0, curr_play_sockaddr, curr_play_addrlen);
-				if (bytes_sent == -1) {
-					fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+		while (valid) {
+
+			received = 1;
+
+			while (received) {
+
+				int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, &curr_play_addrlen);
+				if (bytes_received == -1) {
+					fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+				}
+
+				if (response[0] != MOV) { // Send another request
+					bytes_sent = sendto(sockfd, &mym_msg, 1, 0, curr_play_sockaddr, curr_play_addrlen);
+					if (bytes_sent == -1) {
+						fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+					}
+				}
+				else {
+					received = 0;
 				}
 			}
-			else {
-				received = 0;
-			}
+
+			move[0] = mym_msg[1];
+			move[1] = mym_msg[2];
+			valid = !check_valid(move); // If the move is valid, !check_valid returns 0 and we exit the loop
+
 		}
 		
 		free(mym_msg);
 
 		// Parse response etc.
 
+		update_game(move);
+		
+		int status = check_status();
+
+		if (status) {
+			if (status == 1) {
+				// Player 1 wins
+			}
+			else if (status == 2) {
+				// Player 2 wins
+			}
+			else if (status == 3) {
+				// Draw
+			}
+		}
+
 		turn = !turn;
 
+		move_count += 1;
+		if (move_count == GRID_SIZE * GRID_SIZE) {
+			not_terminated = 0;
+		}
 	}
 }
 
@@ -256,7 +292,7 @@ void update_game(int move[2]) {
 /* 
  * Construct FYI message to send
  */
-void *construct_FYI(char *msg) {
+int construct_FYI(char *msg) {
 	int n; // Number of filled positions
 	int i, j;
 	for (i = 0; i < 3; i++) { // Compute n
@@ -286,7 +322,7 @@ void *construct_FYI(char *msg) {
 		}
 	}
 	
-	return NULL;
+	return (2 + 3 * n);
 }
 
 
@@ -341,44 +377,3 @@ int check_status(void) {
 	// Draw 
 	return 3;
 }
-
-
-
-// void *recsend(void *argu){
-//   // function to receive and send back the messag
-//  struct thread_arg *args = argu;
- 
-//  // the client is not part of our 2 players :
-//  if (args->from!=clientinfo.client1 && args->from!=clientinfo.client2) {
-//  char[] msg = "END 255";
-//  sendto(mysocket, msg, sizeof(msg), 0,&(args->from), sizeof(args->from))==-1);
-//  return NULL;
-//  }
- 
-//  // it is part of our 2 players but not his turn :
-//  if (   (args->from==info.client1 && !info.turn)   ||  (args->from==info.client2 && info.turn)  )   {
-//   char[] msg = "pas ton tour";
-//   sendto(mysocket, msg, sizeof(msg), 0,&(args->from), sizeof(args->from))==-1);
-//   return NULL;
-//  }
-  
-//  //it is his turn :
-  
- 
-//  char MSG[3];
-//  strncpy(MSG,args->buffer,3); 
-//  if (strcmp(MSG, "LFT") == 0) 
-// {
-//   // do something
-// } 
-// else if (strcmp(MSG, "MOV") == 0)
-// {
-//   // do something else
-// }
-// /* more else if clauses */
-// else /* default: */
-// {
-// }
- 
-  
-  
