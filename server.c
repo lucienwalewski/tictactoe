@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <ctype.h>
 
 #define NTHREADS 2				// Max number of threads
 #define MAX_LEN_MSG 2048		// Max message length -> should not be longer than this
@@ -46,9 +47,9 @@ struct thread_arg {
  * 	- socklen_t
  */
 struct clientinfos {
-	struct sockaddr *clientsock1;
-	socklen_t arrdlen1;
-	struct sockaddr *clientsock2;
+	struct sockaddr_in *clientsock1;
+	socklen_t addrlen1;
+	struct sockaddr_in *clientsock2;
 	socklen_t addrlen2; 
 };
 
@@ -60,11 +61,11 @@ int turn = 0;							// Initially player 1s turn
 int move_count = 0;						// Count the number of moves made to determine when the game is over
 
 // int connected = 0;						// Number of connected clients
-struct clientinfos *client_addresses;	// Holds client information
+struct clientinfos client_addresses;	// Holds client information
 int sockfd;								// Socket file descriptor
 
 /* Function descriptors */
-void play_game(void);
+int play_game(void);
 int connect_players(int sockfd, struct sockaddr_in dest_addr, long port);
 int check_valid(int move[2]);
 void update_game(int move[2]);
@@ -83,9 +84,12 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
+	// if (!isnumber(argv[1])) {
+	// 	fprintf(stderr, "Port should be a number.\n");
+	// }
+
 	long port = atol(argv[1]);
 	struct sockaddr_in sockaddr;
-	// socklen_t addrlen;
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1) {
@@ -114,12 +118,17 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
+	printf("Both clients connected.\n");
+
 	// After this point both clients are connected and ready to play the game
 
 	play_game();
 }
 
-
+/*
+ * Connects to two players. Returns 0
+ * upon success and 1 upon failure.
+ */
 int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
 
 	int connected = 0;
@@ -137,24 +146,25 @@ int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
 			return 1;
 		}
 		
+		if (connected == 0) {
+			client_addresses.clientsock1 = &sockaddr_client;
+			client_addresses.addrlen1 = sizeof addrlen_client;
+		}
+		else if (connected == 1) {
+			client_addresses.clientsock2 = &sockaddr_client;
+			client_addresses.addrlen2 = sizeof addrlen_client;
+		}
+
 		if (msg[0] == CON) {
+			free(msg);
 			printf("Client %d connected\n", connected + 1);
 		}
 		else {
+			free(msg);
 			break;
 		}
-
-		if (connected == 0) {
-			client_addresses->clientsock1 = (struct sockaddr *)&sockaddr_client;
-			client_addresses->arrdlen1 = sizeof addrlen_client;
-		}
-		else if (connected == 1) {
-			client_addresses->clientsock2 = (struct sockaddr *)&sockaddr_client;
-			client_addresses->addrlen2 = sizeof addrlen_client;
-		}
-
 		char *connection_msg = malloc(sizeof(char));
-		memset(msg, CON, sizeof(char));
+		memset(connection_msg, CON, sizeof(char));
 
 		// Send connection_msg to client
 		int bytes_sent = sendto(sockfd, (char *)connection_msg, sizeof(char), 0, (struct sockaddr *)&sockaddr_client, addrlen_client);
@@ -164,6 +174,7 @@ int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
 		}
 
 		connected++;
+		free(connection_msg);
 
 	}
 
@@ -171,30 +182,38 @@ int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
 
 }
 
-/* Plays the game until it terminates */
-void play_game(void) {
+/* 
+ * Plays the game until it terminates. 
+ * Returns 0 upon success and 1 upon failure.
+ */
+int play_game(void) {
 
 	int not_terminated = 1;
 
 	while (not_terminated) {
 
-		struct sockaddr *curr_play_sockaddr;
+		struct sockaddr_in curr_play_sockaddr;
 		socklen_t curr_play_addrlen;
 
 		// Get current player's information
-		curr_play_sockaddr = (!turn) ? (struct sockaddr *)client_addresses->clientsock1 : (struct sockaddr *)client_addresses->clientsock2;
-		curr_play_addrlen = (!turn) ? client_addresses->arrdlen1 : client_addresses->addrlen2;
+		curr_play_sockaddr = (!turn) ? *client_addresses.clientsock1 : *client_addresses.clientsock2;
+		curr_play_addrlen = (!turn) ? client_addresses.addrlen1 : client_addresses.addrlen2;
 
 		// Prepare FYI message
 		char* fyi_msg = NULL;
 		int fyi_msg_len = construct_FYI(fyi_msg);
 
+		printf("%d\n", fyi_msg_len);
+		// printf("%s\n", fyi_msg);
+
 		// Send FYI message
-		int bytes_sent = sendto(sockfd, &fyi_msg, fyi_msg_len, 0, curr_play_sockaddr, curr_play_addrlen);
+		int bytes_sent = sendto(sockfd, fyi_msg, fyi_msg_len, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+			return 1;
 		}
 
+		printf("Sent FYI message.\n");
 		free(fyi_msg);
 
 		// Prepare MYM message
@@ -202,9 +221,10 @@ void play_game(void) {
 		memset(mym_msg, MYM, sizeof(char));
 
 		// Send MYM message
-		bytes_sent = sendto(sockfd, &mym_msg, 1, 0, curr_play_sockaddr, curr_play_addrlen);
+		bytes_sent = sendto(sockfd, &mym_msg, 1, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+			return 1;
 		}
 
 		// Get response
@@ -219,15 +239,17 @@ void play_game(void) {
 
 			while (received) {
 
-				int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, curr_play_sockaddr, &curr_play_addrlen);
+				int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, (struct sockaddr *)&curr_play_sockaddr, &curr_play_addrlen);
 				if (bytes_received == -1) {
 					fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+					return 1;
 				}
 
 				if (response[0] != MOV) { // Send another request
-					bytes_sent = sendto(sockfd, &mym_msg, 1, 0, curr_play_sockaddr, curr_play_addrlen);
+					bytes_sent = sendto(sockfd, &mym_msg, 1, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
 					if (bytes_sent == -1) {
 						fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
+						return 1;
 					}
 				}
 				else {
@@ -268,6 +290,7 @@ void play_game(void) {
 			not_terminated = 0;
 		}
 	}
+	return 0;
 }
 
 /* Returns 1 if the move is valid otherwise 0 */
@@ -293,7 +316,7 @@ void update_game(int move[2]) {
  * Construct FYI message to send
  */
 int construct_FYI(char *msg) {
-	int n; // Number of filled positions
+	int n = 0; // Number of filled positions
 	int i, j;
 	for (i = 0; i < 3; i++) { // Compute n
 		for (j = 0; j < 3; j++) {
@@ -303,10 +326,12 @@ int construct_FYI(char *msg) {
 		}
 	}
 
-	msg = (char*) malloc((2 + 3 * n) * sizeof(char)); // Allocate memory for message
+	msg = (char*) malloc((2 + (3 * n)) * sizeof(char)); // Allocate memory for message
 	memset(msg, 0, sizeof(char) * (2 + (3 * n)));
 	memset(msg, FYI, 1); // Set FYI char
 	memset(msg + 1, n, 1); // Set number of blocks filled
+
+	// printf("%s\n", msg);
 
 	int k = 1;
 	char *temp = msg + 2;
@@ -322,7 +347,7 @@ int construct_FYI(char *msg) {
 		}
 	}
 	
-	return (2 + 3 * n);
+	return (2 + (3 * n));
 }
 
 
