@@ -56,7 +56,8 @@ struct clientinfos {
 // Game state
 // Cells in grid contain a 0 if empty, 1 if occupied by player 1 and a 2 otherwise
 
-int grid[3][3];							// Hold the board state
+int grid[GRID_SIZE][GRID_SIZE];							// Hold the board state
+memset(grid, 0, sizeof(grid[0][0]) * GRID_SIZE * GRID_SIZE);
 int turn = 0;							// Initially player 1s turn
 int move_count = 0;						// Count the number of moves made to determine when the game is over
 
@@ -329,7 +330,7 @@ int construct_FYI(char *msg) {
 	msg = (char*) malloc((2 + (3 * n)) * sizeof(char)); // Allocate memory for message
 	memset(msg, 0, sizeof(char) * (2 + (3 * n)));
 	memset(msg, FYI, 1); // Set FYI char
-	memset(msg + 1, n, 1); // Set number of blocks filled
+	memset(msg + 1, (char) n, 1); // Set number of blocks filled
 
 	// printf("%s\n", msg);
 
@@ -400,5 +401,5 @@ int check_status(void) {
 	}
 
 	// Draw 
-	return 3;
+	return 0;
 }
