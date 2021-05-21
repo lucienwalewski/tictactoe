@@ -16,8 +16,8 @@
 #include <pthread.h>
 #include <ctype.h>
 
-#define NTHREADS 2				// Max number of threads
-#define MAX_LEN_MSG 2048		// Max message length -> should not be longer than this
+// #define NTHREADS 2				// Max number of threads
+#define MAX_LEN_MSG 1024		// Max message length -> should not be longer than this
 #define TIMEOUT 60				// Time after which player times out
 #define GRID_SIZE 3
 
@@ -31,14 +31,10 @@
 #define MOV 0x05
 #define CON 0x06
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_t tid[NTHREADS]; 		// List of threads
-int thread_id;					// Current thread id
+// pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+// pthread_t tid[NTHREADS]; 		// List of threads
+// int thread_id;					// Current thread id
 
-struct thread_arg {
-	char buffer[MAX_LEN_MSG];
-	struct sockaddr from;
-};
 
 /*
  * Stores the socket information of the two clients
@@ -46,28 +42,36 @@ struct thread_arg {
  * 	- struct sockaddr
  * 	- socklen_t
  */
-struct clientinfos {
-	struct sockaddr_in *clientsock1;
-	socklen_t addrlen1;
-	struct sockaddr_in *clientsock2;
-	socklen_t addrlen2; 
-};
+
+struct sockaddr_in server_addr;
+socklen_t server_addr_len;
+
+struct sockaddr_in client_addr[2];
+socklen_t client_addr_len[2];
+
+// struct clientinfos {
+// 	struct sockaddr_in *clientsock1;
+// 	socklen_t addrlen1;
+// 	struct sockaddr_in *clientsock2;
+// 	socklen_t addrlen2; 
+// };
 
 // Game state
 // Cells in grid contain a 0 if empty, 1 if occupied by player 1 and a 2 otherwise
 
-int grid[GRID_SIZE][GRID_SIZE];							// Hold the board state
-memset(grid, 0, sizeof(grid[0][0]) * GRID_SIZE * GRID_SIZE);
+int grid[GRID_SIZE][GRID_SIZE] = {};							// Hold the board state
+// memset(grid, 0, sizeof(grid[0][0]) * GRID_SIZE * GRID_SIZE);
 int turn = 0;							// Initially player 1s turn
 int move_count = 0;						// Count the number of moves made to determine when the game is over
 
 // int connected = 0;						// Number of connected clients
-struct clientinfos client_addresses;	// Holds client information
+// struct clientinfos client_addresses;	// Holds client information
 int sockfd;								// Socket file descriptor
+int port;
 
 /* Function descriptors */
 int play_game(void);
-int connect_players(int sockfd, struct sockaddr_in dest_addr, long port);
+int connect_players(void);
 int check_valid(int move[2]);
 void update_game(int move[2]);
 int construct_FYI(char *msg);
@@ -89,8 +93,7 @@ int main(int argc, char *argv[]) {
 	// 	fprintf(stderr, "Port should be a number.\n");
 	// }
 
-	long port = atol(argv[1]);
-	struct sockaddr_in sockaddr;
+	port = atoi(argv[1]);
 
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sockfd == -1) {
@@ -100,12 +103,16 @@ int main(int argc, char *argv[]) {
 
 	puts("Socket created");
 
-	memset(&sockaddr, 0, sizeof sockaddr);
-	sockaddr.sin_family = AF_INET;
-	sockaddr.sin_port = htons(port);
-	inet_pton(AF_INET, "127.0.0.1", &(sockaddr.sin_addr));
+	// memset(&sockaddr, 0, sizeof sockaddr);
+	// sockaddr.sin_family = AF_INET;
+	// sockaddr.sin_port = htons(port);
+	// inet_pton(AF_INET, "127.0.0.1", &(sockaddr.sin_addr));
 
-	if (bind(sockfd, (struct sockaddr *)&sockaddr, sizeof sockaddr)) {
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(port);
+	inet_pton(AF_INET, "127.0.0.1", &(server_addr.sin_addr));
+
+	if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof server_addr)) {
 		fprintf(stderr, "Error binding to socket: %s\n", strerror(errno));
 		return 1;
 	}
@@ -114,7 +121,7 @@ int main(int argc, char *argv[]) {
 
 	// Wait for two clients to connect
 	
-	int connection = connect_players(sockfd, sockaddr, port);
+	int connection = connect_players();
 	if (connection) {
 		return 1;
 	}
@@ -130,30 +137,21 @@ int main(int argc, char *argv[]) {
  * Connects to two players. Returns 0
  * upon success and 1 upon failure.
  */
-int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
+int connect_players(void) {
 
 	int connected = 0;
 
 	while (connected < 2) {
 
-		struct sockaddr_in sockaddr_client = dest_addr;
+		struct sockaddr_in sockaddr_client;
 		socklen_t addrlen_client = sizeof sockaddr_client;
 
-		char *msg = malloc(MAX_LEN_MSG * sizeof(char));
+		char *msg = (char *)malloc(MAX_LEN_MSG * sizeof(char));
 		int bytes_received = recvfrom(sockfd, (char *)msg, MAX_LEN_MSG, 0, (struct sockaddr *)&sockaddr_client, &addrlen_client);
 
 		if (bytes_received == -1) {
 			fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 			return 1;
-		}
-		
-		if (connected == 0) {
-			client_addresses.clientsock1 = &sockaddr_client;
-			client_addresses.addrlen1 = sizeof addrlen_client;
-		}
-		else if (connected == 1) {
-			client_addresses.clientsock2 = &sockaddr_client;
-			client_addresses.addrlen2 = sizeof addrlen_client;
 		}
 
 		if (msg[0] == CON) {
@@ -164,6 +162,16 @@ int connect_players(int sockfd, struct sockaddr_in dest_addr, long port) {
 			free(msg);
 			break;
 		}
+		
+		if (connected == 0) {
+			client_addr[0] = sockaddr_client;
+			client_addr_len[0] = sizeof client_addr[0];
+		}
+		else if (connected == 1) {
+			client_addr[1] = sockaddr_client;
+			client_addr_len[1]= sizeof client_addr[1];
+		}
+
 		char *connection_msg = malloc(sizeof(char));
 		memset(connection_msg, CON, sizeof(char));
 
@@ -197,15 +205,13 @@ int play_game(void) {
 		socklen_t curr_play_addrlen;
 
 		// Get current player's information
-		curr_play_sockaddr = (!turn) ? *client_addresses.clientsock1 : *client_addresses.clientsock2;
-		curr_play_addrlen = (!turn) ? client_addresses.addrlen1 : client_addresses.addrlen2;
+		curr_play_sockaddr = (!turn) ? client_addr[0] : client_addr[1];
+		curr_play_addrlen = (!turn) ? client_addr_len[0] : client_addr_len[1];
 
 		// Prepare FYI message
 		char* fyi_msg = NULL;
 		int fyi_msg_len = construct_FYI(fyi_msg);
 
-		printf("%d\n", fyi_msg_len);
-		// printf("%s\n", fyi_msg);
 
 		// Send FYI message
 		int bytes_sent = sendto(sockfd, fyi_msg, fyi_msg_len, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
