@@ -209,25 +209,19 @@ int play_game(void) {
 		curr_play_addrlen = (!turn) ? client_addr_len[0] : client_addr_len[1];
 
 		// Prepare FYI message
-		char fyi;
+		char fyi[MAX_LEN_MSG];
 		int length = 0;
-		construct_FYI(&fyi, &length);
-
-		char *fyi_msg = &fyi;
-
-		printf("%s\n", fyi_msg);
-		printf("%d\n", length);
+		construct_FYI(fyi, &length);
 
 
 		// Send FYI message
-		int bytes_sent = sendto(sockfd, fyi_msg, length, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
+		int bytes_sent = sendto(sockfd, fyi, length, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
 		if (bytes_sent == -1) {
 			fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 			return 1;
 		}
 
 		printf("Sent FYI message.\n");
-		free(fyi_msg);
 
 		// Prepare MYM message
 		char *mym_msg = malloc(sizeof(char));
@@ -334,6 +328,7 @@ void update_game(int move[2]) {
 void construct_FYI(char *msg, int *length) {
 
 	*length = 0;
+
 	int n = 0; // Number of filled positions
 	int i, j;
 	for (i = 0; i < 3; i++) { // Compute n
@@ -343,28 +338,29 @@ void construct_FYI(char *msg, int *length) {
 			}
 		}
 	}
+	msg[(*length)++] = FYI;
+	msg[(*length)++] = n;
 
-	msg = (char*) malloc((2 + (3 * n)) * sizeof(char)); // Allocate memory for message
-	memset(msg, 0, sizeof(char) * (2 + (3 * n)));
-	memset(msg, FYI, 1); // Set FYI char
-	memset(msg + 1, (char) n, 1); // Set number of blocks filled
+
+	// char *msg = (char*) malloc((2 + (3 * n)) * sizeof(char)); // Allocate memory for message
+	// memset(msg, 0, sizeof(char) * (2 + (3 * n)));
+	// memset(msg, FYI, 1); // Set FYI char
+	// memset(msg + 1, (char) n, 1); // Set number of blocks filled
 
 	// printf("%s\n", msg);
 
-	int k = 1;
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 3; j++) {
 			if (grid[i][j] != 0) {
-				memset((msg + 2 + (3 * k)), grid[i][j], 1);
-				memset((msg + 2 + (3 * k) + 1), i, 1);
-				memset((msg + 2 + (3 * k) + 2), j, 1);
-
-				k++;
+				// memset((msg + 2 + (3 * k)), grid[i][j], 1);
+				// memset((msg + 2 + (3 * k) + 1), i, 1);
+				// memset((msg + 2 + (3 * k) + 2), j, 1);
+				msg[(*length)++] = grid[i][j];
+				msg[(*length)++] = i;
+				msg[(*length)++] = j;
 			}
 		}
 	}
-	*length = (2 + (3 * n));	
-	// return (2 + (3 * n));
 }
 
 

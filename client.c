@@ -31,12 +31,14 @@
 #define MOV 0x05
 #define CON 0x06
 
+#define GRID_SIZE 3
+
 struct sockaddr_in server_addr;
 socklen_t server_addr_len;
 int port;
 int allow_write = 0;
 
-void *decrypt_fyi(void *msg);
+void print_table(char *fyi);
 int connect_server(int sockfd, struct sockaddr_in server_addr);
 int main(int argc, char *argv[])
 {
@@ -105,15 +107,33 @@ int main(int argc, char *argv[])
 			int bytes_received = 0;
 
 			bytes_received = recvfrom(sockfd, msg_rec, MAX_LEN_MSG, 0, (struct sockaddr *)&server_addr, &server_addr_len);
-			printf("Type: %d\n", msg_rec[0]);
+
+			int message_type = msg_rec[0];
+			char *serv_message = &msg_rec[1];
+
+			switch (message_type)
+			{
+			case FYI:
+            	// fprintf(stdout, "[r] [FYI] (%lu bytes)\n", sizeof(*serv_message));
+				print_table(serv_message);
+				break;
+			
+			default:
+				break;
+			}
+
+
+
+
+
+
 			if (bytes_received == -1)
 			{
 				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 			}
 			else if (msg_rec[0] == FYI)
 			{
-				// printf(decrypt_fyi(msg_rec));
-				// printf()
+            	fprintf(stdout, "[r] [FYI] (%lu bytes)\n", sizeof(*serv_message));
 				continue;
 			}
 			else if (msg_rec[0] == TXT)
@@ -206,4 +226,36 @@ int connect_server(int sockfd, struct sockaddr_in server_addr)
 	}
 
 	return 1;
+}
+
+
+void print_table(char *fyi) {
+	int n = fyi[0];
+	int k = 1;
+	int i, j;
+	char new_line[4 * GRID_SIZE + 1];
+	memset(new_line, '-', 4 * GRID_SIZE + 1);
+	printf("%s", new_line);
+	printf("\n");
+	for (i = 0; i < GRID_SIZE; i++) {
+		printf("| ");
+		for (j = 0; j < GRID_SIZE; j++) {
+			if (k < n && fyi[k + 1] == i && fyi[k + 2] == j) {
+				if (fyi[n] == 1) {
+					printf("X");
+				}
+				else {
+					printf("O");
+				}
+				k += 3;
+			}
+			else {
+				printf(" ");
+			}
+			printf(" | ");
+		}
+		printf("\n");
+		printf("%s", new_line);
+		printf("\n");
+	}
 }
