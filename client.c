@@ -287,10 +287,10 @@ void print_table(char *fyi) {
 	int n = fyi[0];
 	int k = 1;
 	int i, j;
-	char new_line[4 * GRID_SIZE + 1];
+	char new_line[4 * GRID_SIZE + 2];
 	memset(new_line, '-', 4 * GRID_SIZE + 1);
-	printf("%s", new_line);
-	printf("\n");
+	memset(new_line + 4 * GRID_SIZE + 1, '\0', 1);
+	printf("%s\n", new_line);
 	for (i = 0; i < GRID_SIZE; i++) {
 		printf("| ");
 		for (j = 0; j < GRID_SIZE; j++) {
