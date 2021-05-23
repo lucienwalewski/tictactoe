@@ -19,7 +19,7 @@
 // #define NTHREADS 2				// Max number of threads
 #define MAX_LEN_MSG 1024		// Max message length -> should not be longer than this
 #define TIMEOUT 60				// Time after which player times out
-#define GRID_SIZE 3
+#define GRID_SIZE 4
 
 /*
  * Message macros
@@ -74,6 +74,7 @@ int play_game(void);
 int connect_players(void);
 int check_valid(int move[2]);
 void update_game(int move[2]);
+void initiate_grid(void);
 void construct_FYI(char *msg, int *length);
 int check_status(void);
 
@@ -129,6 +130,8 @@ int main(int argc, char *argv[]) {
 	printf("Both clients connected.\n");
 
 	// After this point both clients are connected and ready to play the game
+
+	initiate_grid();
 
 	play_game();
 }
@@ -224,9 +227,8 @@ int play_game(void) {
 		printf("Sent FYI message.\n");
 
 		// Prepare MYM message
-		char *mym_msg = malloc(sizeof(char));
-		memset(mym_msg, MYM, sizeof(char));
-		// printf("Sent FYI message.\n");
+		char mym_msg[1];
+		mym_msg[0] = MYM;
 
 		// Send MYM message
 		bytes_sent = sendto(sockfd, &mym_msg, 1, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
@@ -238,42 +240,42 @@ int play_game(void) {
 		printf("Sent MYM message.\n");
 
 		// Get response
-		char *response = malloc(MAX_LEN_MSG * sizeof(char));
-		int received = 1; // While waiting for reception
+		// char response[MAX_LEN_MSG];
+		char response[MAX_LEN_MSG];
+		// int received = 1; // While waiting for reception
 		int valid = 1; // While waiting for a valid move
 		int move[2];
 
 		while (valid) {
 
-			received = 1;
+			int bytes_received = recvfrom(sockfd, response, MAX_LEN_MSG, 0, (struct sockaddr *)&curr_play_sockaddr, &curr_play_addrlen);
+			if (bytes_received == -1) {
+				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+				return 1;
+			}
 
-			while (received) {
 
-				int bytes_received = recvfrom(sockfd, &response, MAX_LEN_MSG, 0, (struct sockaddr *)&curr_play_sockaddr, &curr_play_addrlen);
-				if (bytes_received == -1) {
-					fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+			if (response[0] != MOV) {
+				 // Send another request
+				bytes_sent = sendto(sockfd, &mym_msg, 1, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
+				if (bytes_sent == -1) {
+					fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 					return 1;
 				}
-
-				if (response[0] != MOV) { // Send another request
+			}
+			else {
+				printf("Received MYM\n");
+				move[0] = response[1];
+				move[1] = response[2];
+				if ((valid = !check_valid(move))) {
 					bytes_sent = sendto(sockfd, &mym_msg, 1, 0, (struct sockaddr *)&curr_play_sockaddr, curr_play_addrlen);
 					if (bytes_sent == -1) {
 						fprintf(stderr, "Error while sending message: %s\n", strerror(errno));
 						return 1;
 					}
 				}
-				else {
-					received = 0;
-				}
 			}
-
-			move[0] = mym_msg[1];
-			move[1] = mym_msg[2];
-			valid = !check_valid(move); // If the move is valid, !check_valid returns 0 and we exit the loop
-
 		}
-		
-		free(mym_msg);
 
 		// Parse response etc.
 
@@ -316,10 +318,7 @@ int check_valid(int move[2]) {
 
 /* Updates the game board assuming the move was valid */
 void update_game(int move[2]) {
-	int x, y;
-	x = move[0];
-	y = move[1];
-	grid[x][y] = (!turn) ? 1 : 2;
+	grid[move[0]][move[1]] = (!turn) ? 1 : 2;
 }
 
 /* 
@@ -341,24 +340,22 @@ void construct_FYI(char *msg, int *length) {
 	msg[(*length)++] = FYI;
 	msg[(*length)++] = n;
 
-
-	// char *msg = (char*) malloc((2 + (3 * n)) * sizeof(char)); // Allocate memory for message
-	// memset(msg, 0, sizeof(char) * (2 + (3 * n)));
-	// memset(msg, FYI, 1); // Set FYI char
-	// memset(msg + 1, (char) n, 1); // Set number of blocks filled
-
-	// printf("%s\n", msg);
-
 	for (i = 0; i < 3; i++) {
 		for (j = 0; j < 3; j++) {
 			if (grid[i][j] != 0) {
-				// memset((msg + 2 + (3 * k)), grid[i][j], 1);
-				// memset((msg + 2 + (3 * k) + 1), i, 1);
-				// memset((msg + 2 + (3 * k) + 2), j, 1);
 				msg[(*length)++] = grid[i][j];
 				msg[(*length)++] = i;
 				msg[(*length)++] = j;
 			}
+		}
+	}
+}
+
+void initiate_grid(void) {
+	int i, j;
+	for (i = 0; i < GRID_SIZE; i++) {
+		for (j = 0; j < GRID_SIZE; j++) {
+			grid[i][j] = 0;
 		}
 	}
 }

@@ -31,10 +31,11 @@
 #define MOV 0x05
 #define CON 0x06
 
-#define GRID_SIZE 3
+#define GRID_SIZE 4
 
 struct sockaddr_in server_addr;
 socklen_t server_addr_len;
+int sockfd;
 int port;
 int allow_write = 0;
 
@@ -66,7 +67,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	int sockfd = socket(AF_INET, SOCK_DGRAM, 0); // Create socket
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0); // Create socket
 	if (sockfd == -1)
 	{
 		fprintf(stderr, "Could not create socket: %s\n", strerror(errno));
@@ -96,91 +97,142 @@ int main(int argc, char *argv[])
 	while (1)
 	{
 
-		char *line = NULL;
+		// char *line = NULL;
 		size_t len = 0;
 
-		if (!allow_write)
+		char msg_rec[MAX_LEN_MSG];
+		int bytes_received = 0;
+
+		bytes_received = recvfrom(sockfd, msg_rec, MAX_LEN_MSG, 0, (struct sockaddr *)&server_addr, &server_addr_len);
+		if (bytes_received == -1) {
+			fprintf(stderr, "Error receiving server message while playing game: %s\n", strerror(errno));
+		}
+
+		int message_type = msg_rec[0];
+		char *serv_message = &msg_rec[1];
+
+		switch (message_type)
 		{
-			// if (getline(&line, &len, stdin)>0){printf("not your turn !/n");}
+		case FYI:
+			print_table(serv_message);
+			break;
 
-			char msg_rec[MAX_LEN_MSG];
-			int bytes_received = 0;
+		case MYM:
+			printf("Make your move (only the first character will be considered).\n");
 
-			bytes_received = recvfrom(sockfd, msg_rec, MAX_LEN_MSG, 0, (struct sockaddr *)&server_addr, &server_addr_len);
+			char *col = NULL, *row = NULL;
 
-			int message_type = msg_rec[0];
-			char *serv_message = &msg_rec[1];
+			int incorrect_values = 1;
 
-			switch (message_type)
-			{
-			case FYI:
-            	// fprintf(stdout, "[r] [FYI] (%lu bytes)\n", sizeof(*serv_message));
-				print_table(serv_message);
-				break;
-			
-			default:
-				break;
-			}
+			while (incorrect_values) {
 
-
-
-
-
-
-			if (bytes_received == -1)
-			{
-				fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
-			}
-			else if (msg_rec[0] == FYI)
-			{
-            	fprintf(stdout, "[r] [FYI] (%lu bytes)\n", sizeof(*serv_message));
-				continue;
-			}
-			else if (msg_rec[0] == TXT)
-			{
-				printf("%s\n", msg_rec + 1);
-			}
-			else if (msg_rec[0] == MYM)
-			{
-				printf("it is your turn ! \n");
-				allow_write = 1;
-			}
-			else if (msg_rec[0] == END)
-			{
-				unsigned int winner = (unsigned int)msg_rec[1];
-				if (!winner)
-				{
-					printf("it is a draw ! \n");
+				printf("Enter the row value.\n");
+				if (getline(&row, &len, stdin) == -1) {
+					fprintf(stderr, "Error reading row value: %s\n", strerror(errno));
+					return 1;
 				}
-				else
-				{
-					printf("player %d won ! \n", winner);
+
+				len = 0;
+
+				printf("Enter the column value.\n");
+				if (getline(&col, &len, stdin) == -1) {
+					fprintf(stderr, "Error reading column value: %s\n", strerror(errno));
+					return 1;
 				}
-				return 0;
+
+				if ((col[0] - '0') > -1 && (col[0] - '0') < GRID_SIZE && (row[0] - '0') > -1 && (row[0] - '0') < GRID_SIZE) {
+					incorrect_values = 0;
+				}
+				else {
+					printf("Incorrect values entered.\n");
+				}
 			}
-		}
 
-		if (getline(&line, &len, stdin) == -1)
-		{
-			fprintf(stderr, "error reading the command /n");
-		}
+			char mov_msg[3];
+			mov_msg[0] = MOV;
+			mov_msg[1] = *row - '0';
+			mov_msg[2] = *col - '0';
 
-		if ((strlen(line) < 7) || (strncmp(line, "MOV", 3) != 0) || (strncmp(line + 3, " ", 1) != 0) || (strncmp(line + 5, ",", 1) != 0) || (strncmp(line + 7, "\0", 1) != 0))
-		{
-			fprintf(stderr, "incorrect command /n");
-		}
 
-		char raw = line[4];
-		char col = line[6];
+			free(row);
+			free(col);
 
-		if ((atol(&raw) < 1) || (atol(&col) < 1) || (atol(&raw) > 3) || (atol(&col) > 3))
-		{
-			fprintf(stderr, "incorrect row or column /n");
+			int bytes_sent = sendto(sockfd, mov_msg, 3, 0, (struct sockaddr *)&server_addr, server_addr_len);
+			if (bytes_sent == -1) {
+				fprintf(stderr, "Error sending MYM: %s\n", strerror(errno));
+			}
+			break;
+
+		case TXT:
+			printf("Server message: %s\n", serv_message);
+
+
+
+
+
+		default:
+			break;
 		}
-		printf(line);
+	}
+
+
+
+
+
+		// 	if (bytes_received == -1)
+		// 	{
+		// 		fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
+		// 	}
+		// 	else if (msg_rec[0] == FYI)
+		// 	{
+        //     	fprintf(stdout, "[r] [FYI] (%lu bytes)\n", sizeof(*serv_message));
+		// 		continue;
+		// 	}
+		// 	else if (msg_rec[0] == TXT)
+		// 	{
+		// 		printf("%s\n", msg_rec + 1);
+		// 	}
+		// 	else if (msg_rec[0] == MYM)
+		// 	{
+		// 		printf("it is your turn ! \n");
+		// 		allow_write = 1;
+		// 	}
+		// 	else if (msg_rec[0] == END)
+		// 	{
+		// 		unsigned int winner = (unsigned int)msg_rec[1];
+		// 		if (!winner)
+		// 		{
+		// 			printf("it is a draw ! \n");
+		// 		}
+		// 		else
+		// 		{
+		// 			printf("player %d won ! \n", winner);
+		// 		}
+		// 		return 0;
+		// 	}
+		// }
+
+		// if (getline(&line, &len, stdin) == -1)
+		// {
+		// 	fprintf(stderr, "error reading the command /n");
+		// }
+
+		// if ((strlen(line) < 7) || (strncmp(line, "MOV", 3) != 0) || (strncmp(line + 3, " ", 1) != 0) || (strncmp(line + 5, ",", 1) != 0) || (strncmp(line + 7, "\0", 1) != 0))
+		// {
+		// 	fprintf(stderr, "incorrect command /n");
+		// }
+
+		// char raw = line[4];
+		// char col = line[6];
+
+		// if ((atol(&raw) < 1) || (atol(&col) < 1) || (atol(&raw) > 3) || (atol(&col) > 3))
+		// {
+		// 	fprintf(stderr, "incorrect row or column /n");
+		// }
+		// printf(line);
 
 		//sendto(sockfd, line, len, 0, (struct server_addr *)&server_addr, sizeof(server_addr));
-	}
+	// }
 
 	return 0;
 }
@@ -196,7 +248,8 @@ int connect_server(int sockfd, struct sockaddr_in server_addr)
 	memset(connection_msg, CON, sizeof(char));
 	socklen_t addrlen = sizeof server_addr;
 
-	int bytes_sent = sendto(sockfd, (char *)connection_msg, sizeof(char), 0, (struct server_addr *)&server_addr, addrlen);
+	int bytes_sent = sendto(sockfd, (char *)connection_msg, sizeof(char), 0, (struct sockaddr *)&server_addr, addrlen);
+	// int bytes_sent = send(sockfd, connection_msg, sizeof(char), 0);
 	if (bytes_sent == -1)
 	{
 		fprintf(stderr, "Error while sending connection message: %s\n", strerror(errno));
@@ -207,7 +260,8 @@ int connect_server(int sockfd, struct sockaddr_in server_addr)
 
 	char *response = malloc(MAX_LEN_MSG * sizeof(char));
 	memset(response, 0, MAX_LEN_MSG * sizeof(char));
-	int bytes_received = recvfrom(sockfd, response, MAX_LEN_MSG, 0, (struct server_addr *)&server_addr, &addrlen);
+	// int bytes_received = recvfrom(sockfd, response, MAX_LEN_MSG, 0, (struct server_addr *)&server_addr, &addrlen);
+	int bytes_received = recv(sockfd, response, MAX_LEN_MSG, 0);
 	if (bytes_received == -1)
 	{
 		fprintf(stderr, "Error while receiving connection message: %s\n", strerror(errno));
@@ -240,8 +294,8 @@ void print_table(char *fyi) {
 	for (i = 0; i < GRID_SIZE; i++) {
 		printf("| ");
 		for (j = 0; j < GRID_SIZE; j++) {
-			if (k < n && fyi[k + 1] == i && fyi[k + 2] == j) {
-				if (fyi[n] == 1) {
+			if (k < (1 + 3 * n) && fyi[k + 1] == i && fyi[k + 2] == j) {
+				if (fyi[k] == 1) {
 					printf("X");
 				}
 				else {
