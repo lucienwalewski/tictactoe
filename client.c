@@ -4,9 +4,7 @@
  * Lucien Walewski and Alban Puech
  */
 
-/* J'ai fait expres de faire ca car tu importais plusiers
- * header files en double
- */
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -31,7 +29,7 @@
 #define MOV 0x05
 #define CON 0x06
 
-#define GRID_SIZE 4
+#define GRID_SIZE 3
 
 struct sockaddr_in server_addr;
 socklen_t server_addr_len;
@@ -110,6 +108,8 @@ int main(int argc, char *argv[])
 
 		int message_type = msg_rec[0];
 		char *serv_message = &msg_rec[1];
+		char winner = msg_rec[1];
+
 
 		switch (message_type)
 		{
@@ -165,10 +165,18 @@ int main(int argc, char *argv[])
 
 		case TXT:
 			printf("Server message: %s\n", serv_message);
-
-
-
-
+			break;
+		case END:
+			if (!winner){
+				printf("END OF THE GAME: it is a draw ! \n");
+			}
+			if (winner == 1){
+				printf("END OF THE GAME: you won ! \n");
+			}
+			if (winner == 2){
+				printf("END OF THE GAME: you lose ! \n");
+			}
+			return 0;
 
 		default:
 			break;
