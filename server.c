@@ -189,6 +189,8 @@ int connect_players(void) {
 
     connected++;
     free(connection_msg);
+    
+
 
   }
 
@@ -201,6 +203,19 @@ int connect_players(void) {
  * Returns 0 upon success and 1 upon failure.
  */
 int play_game(void) {
+
+
+char str_address_current[INET_ADDRSTRLEN];
+struct sockaddr_in sa;
+
+char str_address0[INET_ADDRSTRLEN];
+inet_ntop(AF_INET, &(client_addr[0].sin_addr), str_address0, INET_ADDRSTRLEN);
+
+char str_address1[INET_ADDRSTRLEN];
+inet_ntop(AF_INET, &(client_addr[1].sin_addr), str_address1, INET_ADDRSTRLEN);
+
+
+
   int status=0;
   char end_msg[2];
   end_msg[0] = END;
@@ -260,6 +275,20 @@ int play_game(void) {
 	fprintf(stderr, "Error while receiving message: %s\n", strerror(errno));
 	return 1;
       }
+
+
+
+  sa = (struct sockaddr_in) curr_play_sockaddr;
+  inet_ntop(AF_INET, &(sa.sin_addr), str_address_current, INET_ADDRSTRLEN);
+  if (  (strncmp(str_address_current,str_address0,INET_ADDRSTRLEN) || sa.sin_port != client_addr[0].sin_port)  && (strncmp(str_address_current,str_address1,INET_ADDRSTRLEN) || sa.sin_port != client_addr[1].sin_port) ){
+  	printf("attacked by a third client !! \n");
+  }
+
+
+
+
+
+
 
 
       if (response[0] != MOV) {
